@@ -17,6 +17,9 @@ importers:
       dsh-better-sidebar:
         specifier: ^0.16.1
         version: 0.16.1
+      dsh-git-sync:
+        specifier: file:./plugins/dsh-git-sync
+        version: file:plugins/dsh-git-sync
 
 packages:
 
@@ -578,6 +581,9 @@ packages:
     peerDependenciesMeta:
       '@huanlin/dsh-plugin-better-locale':
         optional: true
+
+  dsh-git-sync@file:plugins/dsh-git-sync:
+    resolution: {directory: plugins/dsh-git-sync, type: directory}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -1481,6 +1487,8 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  dsh-git-sync@file:plugins/dsh-git-sync: {}
 
   emoji-regex@8.0.0: {}
 

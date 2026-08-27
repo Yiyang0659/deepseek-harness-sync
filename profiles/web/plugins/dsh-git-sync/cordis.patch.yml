@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-git-sync
+      name: 'dsh-git-sync'
