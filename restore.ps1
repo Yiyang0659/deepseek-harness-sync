@@ -2,7 +2,7 @@
 # DeepSeek Harness 一键恢复/初始化脚本 (Restore)
 # ===================================================
 
-$DshDir = "C:\Users\wy_liuxiaoyang\.dsh"
+$DshDir = $PSScriptRoot
 Set-Location -Path $DshDir
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
