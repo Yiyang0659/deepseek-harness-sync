@@ -37,9 +37,8 @@ llm-pi-ai:
         - id: glm-5.3-flash
           name: GLM-5.3-Flash
 agent-default-model:
-  provider: antigravity
-  model: gemini-3.7-flash
-  reasoningEffort: high
+  provider: zai
+  model: glm-5.3-flash
 ui-theme:
   preference: system
 agent-presets:
