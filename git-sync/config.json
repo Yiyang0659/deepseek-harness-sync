@@ -1,0 +1,8 @@
+{
+  "localScanSeconds": 10,
+  "remoteFetchMinutes": 5,
+  "autoSyncEnabled": true,
+  "dailyTime": "23:00",
+  "pullFirst": true,
+  "catchUpOnStartup": true
+}
