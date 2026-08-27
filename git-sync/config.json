@@ -1,5 +1,5 @@
 {
-  "localScanSeconds": 10,
+  "localScanSeconds": 60,
   "remoteFetchMinutes": 5,
   "autoSyncEnabled": true,
   "dailyTime": "23:00",
