@@ -228,14 +228,14 @@ window.__ModuleLoader__.load({
       } else if (stState === "no-remote") {
         dotColor = "#f59e0b"; statusLabel = "Git: 未关联"; statusTitle = "尚未关联 GitHub 远程仓库";
       } else if (stState === "diverged") {
-        dotColor = "#a855f7"; statusLabel = `Git: ⚠ 双向分叉`; statusTitle = `本地 ↑${status.ahead} / 云端 ↓${status.behind}，点击【Git与本地同步】自动 rebase 合并`;
+        dotColor = "#a855f7"; statusLabel = `Git: ⚠ 双向分叉`; statusTitle = `本地 ↑${status.ahead} / 云端 ↓${status.behind}，请打开徽标面板点击【Git ➔ 本地】自动 rebase 合并`;
       } else if (stState === "behind") {
-        dotColor = "#3b82f6"; statusLabel = `Git: ↓${status.behind} 待拉取`; statusTitle = "云端有新提交，请点击【Git与本地同步】";
+        dotColor = "#3b82f6"; statusLabel = `Git: ↓${status.behind} 待拉取`; statusTitle = "云端有新提交，请打开徽标面板点击【Git ➔ 本地】";
       } else if (stState === "upload") {
         dotColor = "#f59e0b";
         const aheadText = status.ahead > 0 ? `↑${status.ahead}` : "";
         statusLabel = `Git: ${[aheadText, status.dirty ? "有修改" : ""].filter(Boolean).join(" ")} 待上传`;
-        statusTitle = "本地配置已变更，请点击【本地与Git同步】";
+        statusTitle = "本地配置已变更，请打开徽标面板点击【本地 ➔ Git】";
       }
 
       const sch = status?.scheduler;
@@ -252,22 +252,6 @@ window.__ModuleLoader__.load({
           h("span", { style: { display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}` } }),
           Icons.gitBranch(11, "var(--dsw-alias-label-secondary, #94a3b8)"),
           h("span", { style: { fontSize: "11px" } }, statusLabel)
-        ),
-        // 上传按钮
-        h("button", { type: "button", disabled: loading, onClick: handlePush,
-          title: "【本地与Git同步】提交并推送本机模型/插件配置到 GitHub",
-          style: pillBtn({ opacity: loading && loadingType !== "push" ? 0.6 : 1, cursor: loading ? "not-allowed" : "pointer",
-            color: loadingType === "push" ? "#93c5fd" : undefined }) },
-          Icons.upload(11, loadingType === "push" ? "#93c5fd" : "#38bdf8"),
-          h("span", null, loadingType === "push" ? "正在上传..." : "本地与Git同步")
-        ),
-        // 拉取按钮
-        h("button", { type: "button", disabled: loading, onClick: handlePull,
-          title: "【Git与本地同步】拉取 GitHub 最新配置并自动安装插件依赖",
-          style: pillBtn({ opacity: loading && loadingType !== "pull" ? 0.6 : 1, cursor: loading ? "not-allowed" : "pointer",
-            color: loadingType === "pull" ? "#93c5fd" : undefined }) },
-          Icons.download(11, loadingType === "pull" ? "#93c5fd" : "#34d399"),
-          h("span", null, loadingType === "pull" ? "正在拉取..." : "Git与本地同步")
         ),
 
         // ---------------- 面板 ----------------
