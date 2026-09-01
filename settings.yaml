@@ -37,8 +37,9 @@ llm-pi-ai:
         - id: glm-5.3-flash
           name: GLM-5.3-Flash
 agent-default-model:
-  provider: opencode
-  model: deepseek-v4-flash
+  provider: antigravity
+  model: gemini-3.7-flash
+  reasoningEffort: high
 ui-theme:
   preference: system
 agent-presets:
