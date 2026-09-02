@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       dsh-agy-link:
-        specifier: 0.4.20
+        specifier: ^0.4.20
         version: 0.4.20
       dsh-at-file:
         specifier: git+https://github.com/omdsh-dev/dsh-at-file.git
         version: git+https://github.com/omdsh-dev/dsh-at-file.git#c37b0ed9e8bf3585bf9f272462dcf01886efe2a3
       dsh-better-sidebar:
-        specifier: ^0.16.1
-        version: 0.16.1
+        specifier: file:./plugins/dsh-better-sidebar
+        version: file:plugins/dsh-better-sidebar
       dsh-git-sync:
         specifier: file:./plugins/dsh-git-sync
         version: file:plugins/dsh-git-sync
@@ -266,12 +266,12 @@ packages:
   '@upsetjs/venn.js@2.0.0':
     resolution: {integrity: sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw==}
 
-  ansi-regex@5.0.0:
-    resolution: {integrity: sha512-bY6fj56OUQ0hU1KjFNDQuJFezqKdrAyFdIevADiqrWHwSlbmBNMHp5ak2f40Pm8JTFyM2mqxkG6ngkHO11f/lg==}
+  ansi-regex@5.0.1:
+    resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
     engines: {node: '>=8'}
 
-  ansi-styles@4.0.0:
-    resolution: {integrity: sha512-8zjUtFJ3db/QoPXuuEMloS2AUf79/yeyttJ7Abr3hteopJu9HK8vsgGviGUMq+zyA6cZZO6gAyZoMTF6TgaEjA==}
+  ansi-styles@4.3.0:
+    resolution: {integrity: sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==}
     engines: {node: '>=8'}
 
   camelcase@5.3.1:
@@ -556,8 +556,8 @@ packages:
       react:
         optional: true
 
-  dsh-better-sidebar@0.16.1:
-    resolution: {integrity: sha512-fjFNzfrgdIbzlcC4Sd4aS1I2ZRbuA+/m3XQnOxY13jE6IKJzwz0+GjATcKTyFoLnXoDRp2QJz/U0GxhaOD70Dw==}
+  dsh-better-sidebar@file:plugins/dsh-better-sidebar:
+    resolution: {directory: plugins/dsh-better-sidebar, type: directory}
     engines: {node: '>=20'}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.1
@@ -658,8 +658,8 @@ packages:
   node-pty@1.1.0:
     resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
-  p-limit@2.2.0:
-    resolution: {integrity: sha512-pZbTJpoUsCzV48Mc9Nh51VbwO0X9cuPFE8gYwx9BTCt9SF8/b7Zljd2fVgOxhIF/HDTKgpVzs+GPhyKfjLLFRQ==}
+  p-limit@2.3.0:
+    resolution: {integrity: sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==}
     engines: {node: '>=6'}
 
   p-locate@4.1.0:
@@ -731,12 +731,12 @@ packages:
   strictdom@1.0.1:
     resolution: {integrity: sha512-cEmp9QeXXRmjj/rVp9oyiqcvyocWab/HaoN4+bwFeZ7QzykJD6L3yD4v12K1x0tHpqRqVpJevN3gW7kyM39Bqg==}
 
-  string-width@4.2.0:
-    resolution: {integrity: sha512-zUz5JD+tgqtuDjMhwIg5uFVV3dtqZ9yQJlZVfq4I01/K5Paj5UHj7VyrQOJvzawSVlKpObApbfD0Ed6yJc+1eg==}
+  string-width@4.2.3:
+    resolution: {integrity: sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==}
     engines: {node: '>=8'}
 
-  strip-ansi@6.0.0:
-    resolution: {integrity: sha512-AuvKTrTfQNYNIctbR1K/YGTR1756GycPsg7b9bdV9Duqur4gv6aKqHXah67Z8ImS7WEz5QVcOtlfW2rZEugt6w==}
+  strip-ansi@6.0.1:
+    resolution: {integrity: sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==}
     engines: {node: '>=8'}
 
   style-mod@4.1.3:
@@ -789,8 +789,8 @@ packages:
     resolution: {integrity: sha512-o50j0JeToy/4K6OZcaQmW6lyXXKhq7csREXcDwk2omFPJEwUNOVtJKvmDr9EI1fAJZUyZcRF7kxGBWmRXudrCQ==}
     engines: {node: '>=6'}
 
-  yargs@15.3.1:
-    resolution: {integrity: sha512-92O1HWEjw27sBfgmXiixJWT5hRBp2eobqXicLtPBIDBhYB+1HpwZlXmbW2luivBJHBzki+7VyCLRtAkScbTBQA==}
+  yargs@15.4.1:
+    resolution: {integrity: sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A==}
     engines: {node: '>=8'}
 
   zod@4.4.3:
@@ -1208,9 +1208,9 @@ snapshots:
       d3-selection: 3.0.0
       d3-transition: 3.0.1(d3-selection@3.0.0)
 
-  ansi-regex@5.0.0: {}
+  ansi-regex@5.0.1: {}
 
-  ansi-styles@4.0.0:
+  ansi-styles@4.3.0:
     dependencies:
       color-convert: 2.0.1
 
@@ -1218,8 +1218,8 @@ snapshots:
 
   cliui@6.0.0:
     dependencies:
-      string-width: 4.2.0
-      strip-ansi: 6.0.0
+      string-width: 4.2.3
+      strip-ansi: 6.0.1
       wrap-ansi: 6.2.0
 
   clsx@2.1.1: {}
@@ -1452,7 +1452,7 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  dsh-better-sidebar@0.16.1:
+  dsh-better-sidebar@file:plugins/dsh-better-sidebar:
     dependencies:
       '@codemirror/commands': 6.11.0
       '@codemirror/lang-cpp': 6.0.3
@@ -1568,13 +1568,13 @@ snapshots:
     dependencies:
       node-addon-api: 7.1.0
 
-  p-limit@2.2.0:
+  p-limit@2.3.0:
     dependencies:
       p-try: 2.2.0
 
   p-locate@4.1.0:
     dependencies:
-      p-limit: 2.2.0
+      p-limit: 2.3.0
 
   p-try@2.2.0: {}
 
@@ -1597,7 +1597,7 @@ snapshots:
     dependencies:
       dijkstrajs: 1.0.3
       pngjs: 5.0.0
-      yargs: 15.3.1
+      yargs: 15.4.1
 
   react-icons@5.7.0: {}
 
@@ -1631,15 +1631,15 @@ snapshots:
 
   strictdom@1.0.1: {}
 
-  string-width@4.2.0:
+  string-width@4.2.3:
     dependencies:
       emoji-regex: 8.0.0
       is-fullwidth-code-point: 3.0.0
-      strip-ansi: 6.0.0
+      strip-ansi: 6.0.1
 
-  strip-ansi@6.0.0:
+  strip-ansi@6.0.1:
     dependencies:
-      ansi-regex: 5.0.0
+      ansi-regex: 5.0.1
 
   style-mod@4.1.3: {}
 
@@ -1659,9 +1659,9 @@ snapshots:
 
   wrap-ansi@6.2.0:
     dependencies:
-      ansi-styles: 4.0.0
-      string-width: 4.2.0
-      strip-ansi: 6.0.0
+      ansi-styles: 4.3.0
+      string-width: 4.2.3
+      strip-ansi: 6.0.1
 
   ws@8.21.3: {}
 
@@ -1672,7 +1672,7 @@ snapshots:
       camelcase: 5.3.1
       decamelize: 1.2.0
 
-  yargs@15.3.1:
+  yargs@15.4.1:
     dependencies:
       cliui: 6.0.0
       decamelize: 1.2.0
@@ -1681,7 +1681,7 @@ snapshots:
       require-directory: 2.1.1
       require-main-filename: 2.0.0
       set-blocking: 2.0.0
-      string-width: 4.2.0
+      string-width: 4.2.3
       which-module: 2.0.1
       y18n: 4.0.3
       yargs-parser: 18.1.3

@@ -6,15 +6,15 @@
       "bundles": [
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
-        "dsh-agy-link",
         "dsh-at-file",
         "dsh-better-sidebar",
-        "dsh-git-sync"
+        "dsh-git-sync",
+        "dsh-agy-link"
       ]
     }
   },
   "dependencies": {
-    "dsh-agy-link": "0.4.20",
+    "dsh-agy-link": "^0.4.20",
     "dsh-at-file": "git+https://github.com/omdsh-dev/dsh-at-file.git",
     "dsh-better-sidebar": "file:./plugins/dsh-better-sidebar",
     "dsh-git-sync": "file:./plugins/dsh-git-sync"

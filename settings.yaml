@@ -3,6 +3,7 @@ ui-onboarding:
 llm-pi-ai:
   providers:
     opencode:
+      api: openai-completions
       baseURL: https://opencode.ai/zen/go/v1
       models:
         - id: deepseek-v4-flash
@@ -13,14 +14,38 @@ llm-pi-ai:
           name: DeepSeek V4 Flash Free
           contextWindow: 200000
           maxTokens: 128000
+        - id: deepseek-v4-flash-vision-exp
+          name: DeepSeek V4 Flash Vision Exp
+          contextWindow: 1000000
+          maxTokens: 131072
         - id: deepseek-v4-pro
           name: DeepSeek V4 Pro
+          contextWindow: 1000000
+          maxTokens: 131072
+        - id: glm-5.3
+          name: GLM-5.3
+          contextWindow: 1000000
+          maxTokens: 131072
+        - id: glm-5.3-flash
+          name: GLM-5.3-Flash
           contextWindow: 1000000
           maxTokens: 131072
         - id: gpt-5.6-luna
           name: GPT-5.6 Luna
           contextWindow: 1050000
           maxTokens: 128000
+        - id: kimi-k2.7-code
+          name: Kimi K2.7 Code
+          contextWindow: 262144
+          maxTokens: 262144
+        - id: qwen-3.8-max
+          name: Qwen 3.8 Max
+          contextWindow: 1000000
+          maxTokens: 131072
+        - id: qwen-3.8-flash
+          name: Qwen 3.8 Flash
+          contextWindow: 1000000
+          maxTokens: 131072
       apiKeyEnv: OPENCODE_API_KEY
     zai:
       baseURL: https://api.z.ai/api/coding/paas/v4
@@ -36,10 +61,11 @@ llm-pi-ai:
           maxTokens: 131072
         - id: glm-5.3-flash
           name: GLM-5.3-Flash
+          contextWindow: 1000000
+          maxTokens: 131072
 agent-default-model:
-  provider: antigravity
-  model: gemini-3.7-flash
-  reasoningEffort: high
+  provider: opencode
+  model: glm-5.3-flash
 ui-theme:
   preference: system
 agent-presets:
@@ -48,3 +74,6 @@ web-search-deepseek:
   baseURL: https://api.deepseek.com/anthropic/v1
 permission:
   defaultPreset: danger-full-access
+dsh-better-sidebar:
+  openByDefault: false
+  agentOpenTools: true

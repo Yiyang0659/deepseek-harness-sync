@@ -20,6 +20,7 @@ backup-*/
 .anonymous-user-id
 # 调度器机器本地状态（config.json 入库共享，state.json 各机自持）
 git-sync/state.json
+llm-deepseek/
 
 # 3. 依赖库目录（体积巨大，通过 package.json/pnpm-lock.yaml 还原）
 node_modules/
