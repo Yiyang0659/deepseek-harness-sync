@@ -1,336 +1,23 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { resolve } from "node:path";
-import { homedir } from "node:os";
-import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+// dsh-git-sync v2 — server plugin
+// HTTP routes + server-side scheduler + real-time watcher.
+// The scheduler lives inside the DSH web server process, so the daily sync
+// keeps working with the browser closed (same contract as v1).
 
-const execFileAsync = promisify(execFile);
-const DSH_DIR = resolve(process.env.DSH_HOME || resolve(homedir(), ".dsh"));
-const PROFILES_WEB_DIR = resolve(DSH_DIR, "profiles", "web");
-const DATA_DIR = resolve(DSH_DIR, "git-sync");
-const CONFIG_FILE = resolve(DATA_DIR, "config.json"); // 入库：两台电脑共享同一节奏
-const STATE_FILE = resolve(DATA_DIR, "state.json");   // 机器本地：上次运行时间与日志
+import { watch } from "node:fs";
+import {
+  createCore, ADAPTER_PRESETS, TRACKED_PATHS, WATCH_IGNORE,
+  fmtLocal
+} from "./core.js";
 
-const LOG_LIMIT = 20;
-const HOUR_MS = 3600 * 1000;
+const name = "dsh-git-sync";
 
-// ---------------- 默认配置 ----------------
-const DEFAULT_CONFIG = {
-  localScanSeconds: 10,       // 客户端本地状态扫描频率（秒）
-  remoteFetchMinutes: 5,      // 远程 git fetch 巡检频率（分钟）
-  autoSyncEnabled: false,     // 每日自动同步开关
-  dailyTime: "23:00",         // 自动同步时刻
-  pullFirst: true,            // 先拉取再推送
-  catchUpOnStartup: true      // 错过计划时开机补跑
-};
+// ============================================================
+// plugin entry
+// ============================================================
 
-// ---------------- 小工具 ----------------
-function runGit(args, cwd = DSH_DIR, timeout = 10000) {
-  return execFileAsync("git", args, {
-    cwd,
-    timeout,
-    encoding: "utf8",
-    windowsHide: true
-  }).then(
-    ({ stdout, stderr }) => ({ ok: true, stdout: String(stdout || "").trim(), stderr: String(stderr || "").trim() }),
-    (err) => ({ ok: false, error: err.message, stderr: String(err.stderr || "").trim(), stdout: String(err.stdout || "").trim() })
-  );
-}
-
-function ensureDataDir() {
-  try { mkdirSync(DATA_DIR, { recursive: true }); } catch {}
-}
-
-function readJson(file, fallback) {
-  try {
-    if (!existsSync(file)) return fallback;
-    return JSON.parse(readFileSync(file, "utf8"));
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJson(file, obj) {
-  ensureDataDir();
-  try {
-    writeFileSync(file, JSON.stringify(obj, null, 2), "utf8");
-  } catch {}
-}
-
-let configCache = null;
-function loadConfig() {
-  if (!configCache) {
-    const stored = readJson(CONFIG_FILE, {});
-    // 首次运行时把默认配置落盘（入库同步给另一台电脑）
-    if (!existsSync(CONFIG_FILE)) writeJson(CONFIG_FILE, DEFAULT_CONFIG);
-    configCache = { ...DEFAULT_CONFIG, ...stored };
-  }
-  return configCache;
-}
-
-function sanitizeConfig(input) {
-  const cfg = { ...DEFAULT_CONFIG };
-  const num = (v, lo, hi, dft) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : dft;
-  };
-  cfg.localScanSeconds = num(input?.localScanSeconds, 5, 300, DEFAULT_CONFIG.localScanSeconds);
-  cfg.remoteFetchMinutes = num(input?.remoteFetchMinutes, 1, 60, DEFAULT_CONFIG.remoteFetchMinutes);
-  cfg.autoSyncEnabled = !!input?.autoSyncEnabled;
-  const t = typeof input?.dailyTime === "string" ? input.dailyTime : "";
-  cfg.dailyTime = /^([01]?\d|2[0-3]):[0-5]\d$/.test(t) ? (t.length === 4 ? "0" + t : t) : DEFAULT_CONFIG.dailyTime;
-  cfg.pullFirst = !!input?.pullFirst;
-  cfg.catchUpOnStartup = !!input?.catchUpOnStartup;
-  return cfg;
-}
-
-function saveConfig(next) {
-  configCache = sanitizeConfig(next);
-  writeJson(CONFIG_FILE, configCache);
-  return configCache;
-}
-
-let state = readJson(STATE_FILE, { lastRunDate: "", lastRunAt: 0, log: [] });
-function persistState() {
-  writeJson(STATE_FILE, state);
-}
-
-function todayKey(d = new Date()) {
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-function parseDailyTime(hhmm) {
-  const [h, m] = String(hhmm || "23:00").split(":").map((x) => parseInt(x, 10));
-  const t = new Date();
-  t.setHours(Number.isFinite(h) ? h : 23, Number.isFinite(m) ? m : 0, 0, 0);
-  return t;
-}
-
-function fmtLocal(iso) {
-  try { return new Date(iso).toLocaleString("zh-CN", { hour12: false }); } catch { return iso; }
-}
-
-// ---------------- Git 操作层 ----------------
-let lastFetchTime = 0;
-let busy = false;
-
-async function fetchRemote(branch, force = false) {
-  const cfg = loadConfig();
-  const intervalMs = Math.max(1, cfg.remoteFetchMinutes) * 60 * 1000;
-  const now = Date.now();
-  if (!force && now - lastFetchTime < intervalMs) return;
-  lastFetchTime = now;
-  await runGit(["fetch", "origin", branch], DSH_DIR, 15000);
-}
-
-function collectDirtyFiles(stdout) {
-  const files = [];
-  if (!stdout) return files;
-  for (const line of stdout.split("\n")) {
-    const t = line.trim();
-    if (t) files.push(t.replace(/^[MADRCU?! ]+\s+/, ""));
-  }
-  return files;
-}
-
-async function computeStatus(opts = {}) {
-  const force = !!opts.force;
-  const isRepo = existsSync(resolve(DSH_DIR, ".git"));
-  const base = {
-    isRepo, remote: null, branch: "main",
-    ahead: 0, behind: 0, dirty: false, dirtyFiles: [],
-    state: "no-repo", synced: false, error: null, lastChecked: Date.now()
-  };
-  if (!isRepo) {
-    base.error = "本地尚未初始化 Git 仓库";
-    return base;
-  }
-
-  const branchRes = await runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
-  const branch = branchRes.ok ? branchRes.stdout : "main";
-  const remoteRes = await runGit(["remote", "get-url", "origin"]);
-  const remote = remoteRes.ok ? remoteRes.stdout : null;
-
-  const statusRes = await runGit(["status", "--porcelain"]);
-  const dirtyFiles = statusRes.ok ? collectDirtyFiles(statusRes.stdout) : [];
-  const dirty = dirtyFiles.length > 0;
-
-  Object.assign(base, { branch, remote, dirty, dirtyFiles });
-
-  if (!remote) {
-    base.state = "no-remote";
-    base.error = "未配置 GitHub 远程仓库 (origin)";
-    return base;
-  }
-
-  await fetchRemote(branch, force);
-
-  const countRes = await runGit(["rev-list", "--left-right", "--count", `HEAD...origin/${branch}`]);
-  let ahead = 0, behind = 0;
-  if (countRes.ok && countRes.stdout) {
-    const parts = countRes.stdout.split(/\s+/);
-    if (parts.length >= 2) {
-      ahead = parseInt(parts[0], 10) || 0;
-      behind = parseInt(parts[1], 10) || 0;
-    }
-  }
-  Object.assign(base, { ahead, behind });
-
-  if (ahead > 0 && behind > 0) base.state = "diverged";
-  else if (behind > 0) base.state = "behind";
-  else if (dirty || ahead > 0) base.state = "upload";
-  else base.state = "synced";
-
-  base.synced = base.state === "synced";
-  base.lastFetchAt = lastFetchTime;
-  return base;
-}
-
-function schedulerInfo(statusState) {
-  const cfg = loadConfig();
-  if (!cfg.autoSyncEnabled) return null;
-  const target = parseDailyTime(cfg.dailyTime);
-  const doneToday = state.lastRunDate === todayKey();
-  const missed = !doneToday && Date.now() >= target.getTime();
-  return {
-    enabled: true,
-    dailyTime: cfg.dailyTime,
-    pullFirst: cfg.pullFirst,
-    lastRunDate: state.lastRunDate,
-    lastRunText: state.lastRunAt ? fmtLocal(new Date(state.lastRunAt).toISOString()) : "从未运行",
-    nextRunText: doneToday ? "今日已完成 ✓" : missed ? "等待执行中…" : `今天 ${cfg.dailyTime}`
-  };
-}
-
-const TRACKED_PATHS = [
-  "settings.yaml", ".gitignore", "README.md",
-  ".credentials.yaml.example",
-  "profiles/web/package.json", "profiles/web/cordis.yml", "profiles/web/cordis.patch.yml",
-  "profiles/web/pnpm-workspace.yaml", "profiles/web/pnpm-lock.yaml", "profiles/web/plugins/",
-  "skills/", "git-sync/config.json", "sync*", "restore*", "restart.bat"
-];
-
-async function pushOp() {
-  await runGit(["add", ...TRACKED_PATHS]);
-  const st = await runGit(["status", "--porcelain"]);
-  let committed = false;
-  const stamp = new Date().toLocaleString("zh-CN", { hour12: false });
-  if (st.ok && st.stdout) {
-    const c = await runGit(["commit", "-m", `chore(sync): manual push ${stamp}`]);
-    committed = c.ok;
-  }
-  const cnt = await runGit(["rev-list", "--count", `origin/main..HEAD`]).catch(() => null);
-  const aheadBeforePush = cnt && cnt.ok ? parseInt(cnt.stdout, 10) || 0 : 0;
-  if (!committed && aheadBeforePush === 0) {
-    return { committed, pushed: false, skipped: true, message: "本地没有需要上传的变更，已是最新。" };
-  }
-  const branchRes = await runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
-  const branch = branchRes.ok ? branchRes.stdout : "main";
-  const pushRes = await runGit(["push", "origin", branch], DSH_DIR, 30000);
-  if (!pushRes.ok) throw new Error(pushRes.stderr || pushRes.error || "Git push 失败，请检查网络或远程权限");
-  return { committed, pushed: true, skipped: false };
-}
-
-async function pullOp() {
-  const branchRes = await runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
-  const branch = branchRes.ok ? branchRes.stdout : "main";
-
-  const pkgPath = resolve(PROFILES_WEB_DIR, "package.json");
-  const lockPath = resolve(PROFILES_WEB_DIR, "pnpm-lock.yaml");
-  const snap = (p) => { try { return readFileSync(p, "utf8"); } catch { return ""; } };
-  const beforePkg = snap(pkgPath);
-  const beforeLock = snap(lockPath);
-
-  const pullRes = await runGit(["pull", "--rebase", "--autostash", "origin", branch], DSH_DIR, 60000);
-  if (!pullRes.ok) throw new Error(pullRes.stderr || pullRes.error || "Git pull 失败（可能存在冲突）");
-
-  const depsChanged = snap(pkgPath) !== beforePkg || snap(lockPath) !== beforeLock;
-  if (depsChanged) {
-    // Windows 下 .cmd 需经 cmd.exe 启动
-    try {
-      await execFileAsync("cmd.exe", ["/c", "pnpm", "install"], { cwd: PROFILES_WEB_DIR, timeout: 180000, windowsHide: true });
-    } catch {
-      try { await execFileAsync("cmd.exe", ["/c", "npm", "install"], { cwd: PROFILES_WEB_DIR, timeout: 180000, windowsHide: true }); } catch {}
-    }
-  }
-  return { depsChanged };
-}
-
-function appendLog(entry) {
-  state.log = [{ ...entry }, ...(state.log || [])].slice(0, LOG_LIMIT);
-  persistState();
-}
-
-async function autoRun(type = "auto") {
-  if (busy) return { busy: true };
-  busy = true;
-  const entry = { ts: Date.now(), type, ok: false, pulled: false, pushed: false, depsInstalled: false, detail: "" };
-  try {
-    const st0 = await computeStatus({});
-    if (!st0.isRepo || !st0.remote) throw new Error(st0.error || "仓库或远程未就绪");
-
-    const cfg = loadConfig();
-    if (cfg.pullFirst) {
-      const p = await pullOp();
-      entry.pulled = p.depsChanged || st0.behind > 0;
-      entry.depsInstalled = p.depsChanged;
-    }
-    const res = await pushOp();
-    entry.pushed = res.pushed;
-    entry.detail = [
-      entry.pulled ? "已拉取云端更新" : null,
-      res.skipped ? "无新变更可推送" : res.pushed ? "已推送到 GitHub" : null,
-      entry.depsInstalled ? "插件依赖已自动安装" : null
-    ].filter(Boolean).join("；") || "已是最新，无需操作";
-    entry.ok = true;
-  } catch (err) {
-    entry.detail = String(err.message || err);
-  } finally {
-    busy = false;
-  }
-  state.lastRunDate = todayKey();
-  state.lastRunAt = Date.now();
-  appendLog(entry);
-  return { entry, status: await computeStatus({}) };
-}
-
-// ---------------- 调度器（服务端进程内，浏览器关闭仍生效）----------------
-const bootedAt = Date.now();
-let bootCatchupDone = false;
-let schedulerTimer = null;
-
-function startScheduler() {
-  if (schedulerTimer) return;
-  schedulerTimer = setInterval(async () => {
-    try {
-      const cfg = loadConfig();
-      if (!cfg.autoSyncEnabled || busy) return;
-      const doneToday = state.lastRunDate === todayKey();
-      const target = parseDailyTime(cfg.dailyTime);
-
-      // 常规触发：到达今天目标时刻且今天没跑过（覆盖睡眠唤醒、服务中途重启）
-      if (!doneToday && Date.now() >= target.getTime()) {
-        await autoRun("auto");
-        return;
-      }
-      // 补偿触发：错过超过 20 小时且本进程启动满 2 分钟后补跑一次
-      if (
-        !bootCatchupDone && cfg.catchUpOnStartup &&
-        state.lastRunAt > 0 && state.lastRunDate !== todayKey() &&
-        Date.now() - state.lastRunAt > 20 * HOUR_MS &&
-        Date.now() - bootedAt >= 2 * 60 * 1000
-      ) {
-        bootCatchupDone = true;
-        await autoRun("auto-catchup");
-      }
-    } catch {}
-  }, 30000);
-  schedulerTimer.unref?.();
-}
-
-// ---------------- HTTP 插件注册 ----------------
 export function apply(ctx) {
+  const core = createCore({});
+
   const readBody = (req) => new Promise((done) => {
     let data = "";
     req.on("data", (c) => { data += c; if (data.length > 1e6) req.destroy(); });
@@ -342,6 +29,141 @@ export function apply(ctx) {
     res.end(JSON.stringify(body));
   };
 
+  // ---------------- busy lock ----------------
+
+  let busy = false;
+
+  // ---------------- scheduler (daily sync lives here, browser-independent) --
+
+  const bootedAt = Date.now();
+  let bootCatchupDone = false;
+  let schedulerTimer = null;
+  const RETRY_BACKOFF_MS = 5 * 60 * 1000;   // after a failed run, retry at most every 5 min
+  const CATCHUP_GRACE_MS = 2 * 60 * 1000;   // wait 2 min after boot before a catch-up run
+  const HOUR_MS = 3600 * 1000;
+
+  async function schedulerTick() {
+    try {
+      const cfg = core.loadConfig();
+      if (!cfg.autoSyncEnabled || busy) return;
+      const state = core.getState();
+      const doneToday = state.lastRunDate === todayKeySafe();
+      const target = parseTimeSafe(cfg.dailyTime);
+
+      // regular trigger: today's target time reached and not yet succeeded
+      if (!doneToday && Date.now() >= target.getTime()) {
+        // v1 bug fix: retry failed daily syncs (throttled) instead of
+        // treating the day as done after one failure
+        if (state.lastFailedAt && Date.now() - state.lastFailedAt < RETRY_BACKOFF_MS) return;
+        await autoRunSafe("auto");
+        return;
+      }
+      // catch-up trigger: missed by >20h and this process is 2+ min old
+      if (
+        !bootCatchupDone && cfg.catchUpOnStartup &&
+        state.lastRunAt > 0 && state.lastRunDate !== todayKeySafe() &&
+        Date.now() - state.lastRunAt > 20 * HOUR_MS &&
+        Date.now() - bootedAt >= CATCHUP_GRACE_MS
+      ) {
+        bootCatchupDone = true;
+        await autoRunSafe("auto-catchup");
+      }
+    } catch { /* never kill the interval */ }
+  }
+
+  function startScheduler() {
+    if (schedulerTimer) return;
+    schedulerTimer = setInterval(schedulerTick, 30000);
+    schedulerTimer.unref?.();
+  }
+
+  // ---------------- real-time watcher ----------------
+
+  let watchers = [];
+  let debounceTimer = null;
+  let lastRealtimeAt = 0;
+  const REALTIME_MIN_INTERVAL_MS = 60 * 1000;
+
+  function isIgnoredRel(rel) {
+    if (!rel) return false;
+    const r = String(rel).split("\\").join("/");
+    for (const rule of WATCH_IGNORE) {
+      if (rule.endsWith("/")) { if (r.startsWith(rule) || r.includes("/" + rule)) return true; }
+      else if (rule.startsWith("*")) { if (r.endsWith(rule.slice(1))) return true; }
+      else if (r === rule || r.startsWith(rule) || r.includes("/" + rule)) return true;
+    }
+    return false;
+  }
+
+  function onWatchEvent(filename) {
+    try {
+      const cfg = core.loadConfig();
+      if (!cfg.realtime.enabled) return;
+      if (isIgnoredRel(filename)) return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(realtimeTick, Math.max(10, cfg.realtime.debounceSeconds) * 1000);
+      debounceTimer.unref?.();
+    } catch { /* ignore */ }
+  }
+
+  async function realtimeTick() {
+    if (busy) return;
+    if (Date.now() - lastRealtimeAt < REALTIME_MIN_INTERVAL_MS) return;
+    busy = true;
+    try {
+      const st = await core.computeStatus({});
+      if (st.state === "upload" || st.state === "diverged" || st.state === "behind" || st.state === "conflict") {
+        lastRealtimeAt = Date.now();
+        await autoRunSafe("realtime");
+      }
+    } catch { /* ignore */ } finally { busy = false; }
+  }
+
+  function startWatcher() {
+    const cfg = core.loadConfig();
+    if (!cfg.realtime.enabled || watchers.length > 0) return;
+    try {
+      const w = watch(core.dshDir, { recursive: true }, (_event, filename) => onWatchEvent(filename));
+      w.unref?.();
+      watchers.push(w);
+    } catch {
+      try {
+        // Linux without recursive support: watch top-level entries only
+        const w2 = watch(core.dshDir, (_event, filename) => onWatchEvent(filename));
+        w2.unref?.();
+        watchers.push(w2);
+      } catch { /* fs.watch unavailable; daily scheduler still guards */ }
+    }
+  }
+
+  function stopWatchers() {
+    for (const w of watchers) { try { w.close(); } catch {} }
+    watchers = [];
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+  }
+
+  // ---------------- small helpers ----------------
+
+  function todayKeySafe() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  function parseTimeSafe(hhmm) {
+    const [h, m] = String(hhmm || "23:00").split(":").map((x) => parseInt(x, 10));
+    const t = new Date();
+    t.setHours(Number.isFinite(h) ? h : 23, Number.isFinite(m) ? m : 0, 0, 0);
+    return t;
+  }
+
+  async function autoRunSafe(type) {
+    const r = await core.autoRun(type);
+    // keep module-level state in sync with the core's log-driven UI
+    return r;
+  }
+
+  // ---------------- HTTP routes ----------------
+
   const registerRoutes = (webServer) => {
     const disposers = [];
     const reg = (route) => {
@@ -349,27 +171,27 @@ export function apply(ctx) {
       if (typeof d === "function") disposers.push(d);
     };
 
-    // 1. GET status —— 四态检测（内部按配置节流 fetch；?force=1 强制刷新）
+    // 1. GET status — state detection (?force=1 forces a remote fetch)
     reg({
       kind: "exact",
       path: "/plugins/git-sync/status",
       handler: async (req, res) => {
         try {
-          const url = req.url || "";
-          const force = /[?&]force=1/.test(url);
-          const status = await computeStatus({ force });
+          const force = /[?&]force=1/.test(req.url || "");
+          const status = await core.computeStatus({ force });
           sendJson(res, 200, {
             ...status,
-            scheduler: schedulerInfo(status.state),
-            pollIntervalMs: Math.max(5, loadConfig().localScanSeconds) * 1000
+            scheduler: core.schedulerInfo(),
+            pollIntervalMs: Math.max(5, core.loadConfig().localScanSeconds) * 1000,
+            trackedPaths: TRACKED_PATHS.length
           });
         } catch (err) {
-          sendJson(res, 500, { error: err.message });
+          sendJson(res, 500, { error: String(err.message || err) });
         }
       }
     });
 
-    // 2. POST push —— 本地 ➜ GitHub
+    // 2. POST push — local ➜ GitHub (bridges first, pathspec-safe add)
     reg({
       kind: "exact",
       path: "/plugins/git-sync/push",
@@ -377,16 +199,21 @@ export function apply(ctx) {
         if (busy) return sendJson(res, 409, { ok: false, error: "另一个同步任务正在执行，请稍候" });
         busy = true;
         try {
-          const r = await pushOp();
-          const status = await computeStatus({});
-          sendJson(res, 200, { ok: true, message: r.skipped ? r.message : "本地配置已成功推送到 GitHub！", ...r, status });
+          const r = await core.pushOp();
+          const status = await core.computeStatus({});
+          sendJson(res, 200, {
+            ok: true,
+            message: r.skipped ? r.message : (r.message || "本地配置已成功推送到 GitHub！"),
+            committed: r.committed, pushed: r.pushed, skipped: r.skipped,
+            bridges: r.bridges, status
+          });
         } catch (err) {
           sendJson(res, 500, { ok: false, error: String(err.message || err) });
         } finally { busy = false; }
       }
     });
 
-    // 3. POST pull —— GitHub ➜ 本地（变更时自动安装插件依赖）
+    // 3. POST pull — GitHub ➜ local (conflict self-heal, deps, bridges, config)
     reg({
       kind: "exact",
       path: "/plugins/git-sync/pull",
@@ -394,12 +221,15 @@ export function apply(ctx) {
         if (busy) return sendJson(res, 409, { ok: false, error: "另一个同步任务正在执行，请稍候" });
         busy = true;
         try {
-          const r = await pullOp();
-          const status = await computeStatus({});
+          const r = await core.pullOp();
+          const status = await core.computeStatus({});
           sendJson(res, 200, {
             ok: true,
             pluginsUpdated: r.depsChanged,
-            message: r.depsChanged ? "配置与新插件依赖已成功拉取并安装！" : "配置已成功从 GitHub 同步到本地！",
+            configChanged: r.configChanged,
+            bridgesRestored: r.bridgesRestored,
+            repair: r.repair,
+            message: r.skipped ? r.message : (r.message || "配置已成功从 GitHub 同步到本地！"),
             status
           });
         } catch (err) {
@@ -408,7 +238,7 @@ export function apply(ctx) {
       }
     });
 
-    // 4. GET / POST config —— 设置读写
+    // 4. GET / POST config — settings read/write (config.json is repo-shared)
     reg({
       kind: "exact",
       path: "/plugins/git-sync/config",
@@ -417,26 +247,30 @@ export function apply(ctx) {
           if (req.method === "POST") {
             const raw = await readBody(req);
             let parsed = {};
-            try { parsed = JSON.parse(raw || "{}"); } catch {}
-            const saved = saveConfig(parsed);
+            try { parsed = JSON.parse(raw || "{}"); } catch { /* keep {} */ }
+            const saved = core.saveConfig(parsed);
+            // apply realtime toggle immediately
+            stopWatchers();
+            startWatcher();
             sendJson(res, 200, { ok: true, config: saved });
           } else {
-            sendJson(res, 200, { ok: true, config: loadConfig() });
+            sendJson(res, 200, { ok: true, config: core.loadConfig() });
           }
         } catch (err) {
-          sendJson(res, 500, { ok: false, error: err.message });
+          sendJson(res, 500, { ok: false, error: String(err.message || err) });
         }
       }
     });
 
-    // 5. POST auto-run —— 手动试运行每日流程（先拉后推）
+    // 5. POST auto-run — manual dry-run of the daily flow (pull-first, then push)
     reg({
       kind: "exact",
       path: "/plugins/git-sync/auto-run",
       handler: async (_req, res) => {
+        if (busy) return sendJson(res, 409, { ok: false, error: "另一个同步任务正在执行，请稍候" });
+        busy = true;
         try {
-          const r = await autoRun("manual");
-          if (r.busy) return sendJson(res, 409, { ok: false, error: "另一个同步任务正在执行，请稍候" });
+          const r = await core.autoRun("manual");
           sendJson(res, 200, {
             ok: r.entry.ok,
             message: r.entry.ok ? `试运行完成：${r.entry.detail}` : `试运行失败：${r.entry.detail}`,
@@ -444,25 +278,101 @@ export function apply(ctx) {
             status: r.status
           });
         } catch (err) {
-          sendJson(res, 500, { ok: false, error: err.message });
-        }
+          sendJson(res, 500, { ok: false, error: String(err.message || err) });
+        } finally { busy = false; }
       }
     });
 
-    // 6. GET log —— 最近同步记录
+    // 6. GET log — recent sync history (machine-local)
     reg({
       kind: "exact",
       path: "/plugins/git-sync/log",
       handler: async (_req, res) => {
+        const state = core.getState();
         sendJson(res, 200, { ok: true, log: state.log || [], lastRunDate: state.lastRunDate });
       }
     });
 
+    // 7. POST repair — one-click conflict / stuck-state recovery (v2)
+    reg({
+      kind: "exact",
+      path: "/plugins/git-sync/repair",
+      handler: async (_req, res) => {
+        if (busy) return sendJson(res, 409, { ok: false, error: "另一个同步任务正在执行，请稍候" });
+        busy = true;
+        try {
+          const repair = await core.repairGitState();
+          const status = await core.computeStatus({ force: true });
+          const ok = repair.ok;
+          core.appendLog({ ts: Date.now(), type: "repair", ok, pulled: false, pushed: false, depsInstalled: false,
+            detail: ok ? (repair.actions.join("；") || "仓库状态正常，无需修复") : repair.actions.join("；") });
+          sendJson(res, 200, {
+            ok,
+            actions: repair.actions,
+            message: ok ? (repair.actions.length ? "已自动修复：" + repair.actions.join("；") : "仓库状态正常，无需修复。") : "自动修复未完成，请查看 actions 详情。",
+            status
+          });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: String(err.message || err) });
+        } finally { busy = false; }
+      }
+    });
+
+    // 8. POST bridge-sync — copy tool configs into bridges/ and push (v2)
+    reg({
+      kind: "exact",
+      path: "/plugins/git-sync/bridge-sync",
+      handler: async (req, res) => {
+        if (busy) return sendJson(res, 409, { ok: false, error: "另一个同步任务正在执行，请稍候" });
+        busy = true;
+        try {
+          const raw = await readBody(req);
+          let body = {};
+          try { body = JSON.parse(raw || "{}"); } catch { /* keep {} */ }
+          const cfg = core.loadConfig();
+          const targets = ADAPTER_PRESETS.filter((p) => {
+            if (body.id) return p.id === body.id;
+            const u = cfg.adapters[p.id];
+            return u && u.enabled;
+          });
+          const results = [];
+          for (const preset of targets) {
+            const u = cfg.adapters[preset.id];
+            results.push({ id: preset.id, ...(await core.bridgeCopyOut(preset, u && u.path)) });
+          }
+          const r = await core.pushOp({ message: `chore(sync): bridge ${targets.map((t) => t.id).join(", ") || "adapters"} ${fmtLocal(Date.now())}` });
+          const status = await core.computeStatus({});
+          sendJson(res, 200, {
+            ok: true,
+            message: `已桥接 ${results.filter((x) => x.copied.length > 0).length} 个工具配置并推送`,
+            results, push: r, status
+          });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: String(err.message || err) });
+        } finally { busy = false; }
+      }
+    });
+
+    // 9. GET adapters — per-tool detection report (v2)
+    reg({
+      kind: "exact",
+      path: "/plugins/git-sync/adapters",
+      handler: async (_req, res) => {
+        try {
+          sendJson(res, 200, { ok: true, adapters: await core.adapterStatus() });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: String(err.message || err) });
+        }
+      }
+    });
+
     startScheduler();
+    startWatcher();
 
     return () => {
       if (schedulerTimer) { clearInterval(schedulerTimer); schedulerTimer = null; }
-      for (const d of disposers) { try { d(); } catch {} }
+      stopWatchers();
+      for (const d of disposers) { try { d(); } catch { /* ignore */ } }
     };
   };
 
@@ -472,3 +382,5 @@ export function apply(ctx) {
     return registerRoutes(webServer);
   });
 }
+
+export { name };

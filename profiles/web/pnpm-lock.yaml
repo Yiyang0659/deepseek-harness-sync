@@ -584,6 +584,7 @@ packages:
 
   dsh-git-sync@file:plugins/dsh-git-sync:
     resolution: {directory: plugins/dsh-git-sync, type: directory}
+    engines: {node: '>=18.17'}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}

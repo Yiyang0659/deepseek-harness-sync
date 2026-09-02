@@ -1,17 +1,59 @@
 {
   "name": "dsh-git-sync",
-  "version": "1.1.0",
-  "description": "Real-time Git sync status detection, scheduled daily auto-sync, and one-click Push/Pull buttons in DSH Web UI",
+  "version": "2.0.0",
+  "description": "Git Config Sync Center for DeepSeek Harness — real-time config sync to GitHub with conflict self-healing, multi AI-tool adapters (OpenCode / Cline / Roo Code / Kilo Code / Continue / goose / Agent Zero), daily scheduler and a one-glance sidebar panel",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
     ".": {
       "default": "./dist/index.js"
     },
+    "./core": "./dist/core.js",
     "./client": "./dist/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test --test-timeout 30000 test/core.test.js test/integration.test.js",
+    "check": "node --check dist/core.js && node --check dist/index.js && node --check dist/client.js && npm run test"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "git",
+    "sync",
+    "config",
+    "opencode",
+    "cline",
+    "roo-code",
+    "kilo-code",
+    "continue",
+    "goose",
+    "agent-zero"
+  ],
+  "license": "MIT",
+  "author": "Yiyang0659",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yiyang0659/dsh-git-sync.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Yiyang0659/dsh-git-sync/issues"
+  },
+  "homepage": "https://github.com/Yiyang0659/dsh-git-sync#readme",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

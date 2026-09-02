@@ -1,0 +1,12 @@
+{
+  "name": "dsh-git-sync",
+  "description": "Git Config Sync Center for DeepSeek Harness — real-time config sync with conflict self-healing and multi AI-tool adapters",
+  "version": "2.0.0",
+  "entry": {
+    "name": "dsh-git-sync",
+    "inject": []
+  },
+  "client": {
+    "platform": "web"
+  }
+}
