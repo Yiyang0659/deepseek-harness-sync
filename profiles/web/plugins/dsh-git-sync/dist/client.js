@@ -199,6 +199,13 @@ window.__ModuleLoader__.load({
         return () => win.removeEventListener?.("focus", onFocus);
       }, [loadConfig, refreshStatus]);
 
+      // keep the recent-sync log fresh (header panel + sidebar page share it)
+      useEffect(() => {
+        refreshLog();
+        const t = setInterval(refreshLog, 60000);
+        return () => clearInterval(t);
+      }, [refreshLog]);
+
       useEffect(() => {
         if (!cfgLoaded) return;
         refreshStatus(true);
