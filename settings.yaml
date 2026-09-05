@@ -158,12 +158,18 @@ llm-pi-ai:
           contextWindow: 1000000
           maxTokens: 131072
 agent-default-model:
+<<<<<<< Updated upstream
   provider: opencode
   model: glm-5.3-flash
 =======
           contextWindow: 200000
           maxTokens: 131072
 agent-default-model:
+  provider: antigravity
+  model: gemini-3.8-flash
+  reasoningEffort: high
+>>>>>>> Stashed changes
+=======
   provider: antigravity
   model: gemini-3.8-flash
   reasoningEffort: high
