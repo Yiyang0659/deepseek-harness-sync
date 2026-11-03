@@ -1,8 +1,43 @@
 {
+  "version": 2,
   "localScanSeconds": 60,
   "remoteFetchMinutes": 5,
   "autoSyncEnabled": true,
   "dailyTime": "23:00",
   "pullFirst": true,
-  "catchUpOnStartup": true
+  "catchUpOnStartup": true,
+  "realtime": {
+    "enabled": true,
+    "debounceSeconds": 30
+  },
+  "adapters": {
+    "opencode": {
+      "enabled": false,
+      "path": ""
+    },
+    "goose": {
+      "enabled": false,
+      "path": ""
+    },
+    "continue": {
+      "enabled": false,
+      "path": ""
+    },
+    "cline": {
+      "enabled": false,
+      "path": ""
+    },
+    "roo-code": {
+      "enabled": false,
+      "path": ""
+    },
+    "kilo-code": {
+      "enabled": false,
+      "path": ""
+    },
+    "agent-zero": {
+      "enabled": false,
+      "path": ""
+    }
+  }
 }
